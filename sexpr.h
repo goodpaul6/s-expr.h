@@ -18,12 +18,12 @@ typedef enum SExprType {
     SE_ID,
     SE_STRING,
     SE_LIST
-};
+} SExprType;
 
 // 'start' is an index into the source string
 typedef struct SExprString {
     int start, len;
-};
+} SExprString;
 
 typedef struct SExpr {
     SExprType type;
@@ -42,7 +42,7 @@ typedef struct SExpr {
 
         struct SExpr* head;
     };
-};
+} SExpr;
 
 typedef struct SExprPool {
     size_t count;
@@ -79,8 +79,8 @@ SExprResult ParseSExpr(const char* src, size_t len, SExprPool* pool);
 
 inline static bool SExprStringEqual(const char* src, const SExprString* a, const char* b)
 {
-    for(int i = a->start; i < a->len; ++i) {
-        if(src[i] != b[i - a->start]) {
+    for(int i = 0; i < a->len; ++i) {
+        if(!b[i] || src[a->start + i] != b[i]) {
             return false;
         }
     }
@@ -108,7 +108,7 @@ typedef struct {
     SExprPool* pool;
     size_t poolUsed;
 
-    SExprResultType result;
+    SExprResult result;
 } SExprParser;
 
 static SExpr SExprNil = { SE_NIL };
@@ -137,7 +137,7 @@ SEXPR_DEF SExpr* SExprAlloc(SExprParser* parser, SExprType type)
         return NULL;
     }
 
-    SExpr* expr = parser->pool->data[parser->poolUsed++];
+    SExpr* expr = &parser->pool->data[parser->poolUsed++];
 
     expr->type = type;
     expr->next = NULL;
@@ -192,7 +192,7 @@ SEXPR_DEF SExpr* SExprParseValue(SExprParser* parser)
 
         bool isFloat = false;
 
-        while(isdigit(parser->last) || (!isFloat && parser->last == '.')) {
+        while(isdigit(parser->last) || (!isFloat && parser->last == '.') || parser->last == '-') {
             if(i >= sizeof(buf) - 1) {
                 parser->result.type = SE_SYNTAX_ERROR;
                 parser->result.syntaxError.message = "Numeric literal is too long.";
@@ -211,7 +211,7 @@ SEXPR_DEF SExpr* SExprParseValue(SExprParser* parser)
 
         if(isFloat) {
             SExpr* expr = SExprAlloc(parser, SE_FLOAT);
-            expr->f = strtod(buf, NULL);
+            expr->f = (float)strtod(buf, NULL);
             return expr;
         }    
 
@@ -240,10 +240,13 @@ SEXPR_DEF SExpr* SExprParseValue(SExprParser* parser)
         parser->last = SExprGetChar(parser);
 
         return expr;
-    } else if(parser->last == '(' || parser->last == '[' || parser->last = '{') {
+    } else if(parser->last == '(' || parser->last == '[' || parser->last == '{') {
         parser->last = SExprGetChar(parser);
 
         while(parser->last && isspace(parser->last)) {
+			if(parser->last == '\n') {
+				parser->lineNumber++;
+			}
             parser->last = SExprGetChar(parser);
         }
 
@@ -265,7 +268,7 @@ SEXPR_DEF SExpr* SExprParseValue(SExprParser* parser)
             SExpr* elem = SExprParseValue(parser);
 
             if(!elem) {
-                // There must have been a syntax error
+                // There must have been an error
                 return NULL;
             }
 
@@ -273,7 +276,15 @@ SEXPR_DEF SExpr* SExprParseValue(SExprParser* parser)
                 list->head = tail = elem;
             } else {
                 tail->next = elem;
+				tail = elem;
             }
+
+			while(parser->last && isspace(parser->last)) {		
+				if(parser->last == '\n') {
+					parser->lineNumber++;
+				}
+				parser->last = SExprGetChar(parser);
+			}
         }
 
         if(!parser->last) {
