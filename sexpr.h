@@ -111,8 +111,6 @@ typedef struct {
     SExprResult result;
 } SExprParser;
 
-static SExpr SExprNil = { SE_NIL };
-
 SEXPR_DEF int SExprGetChar(SExprParser* parser)
 {
     return parser->pos >= parser->len ? 0 : parser->src[parser->pos++];
@@ -163,27 +161,34 @@ SEXPR_DEF SExpr* SExprParseValue(SExprParser* parser)
     }
 
     if(isalpha(parser->last)) {
-        SExpr* expr = SExprAlloc(parser, SE_ID);
+        SExprString s;
 
-        expr->s.len = 0;
-        expr->s.start = parser->pos - 1;
+        s.len = 0;
+        s.start = parser->pos - 1;
 
         while(isalnum(parser->last) || parser->last == '-' ||
                 parser->last == '+' || parser->last == '/' ||
                 parser->last == '*' || parser->last == '$' ||
                 parser->last == '?' || parser->last == '_' ||
                 parser->last == '=') {
-            expr->s.len++;
+            s.len++;
             parser->last = SExprGetChar(parser);
         }
 
-        if(SExprStringEqual(parser->src, &expr->s, "true")) {
-            expr->type = SE_BOOL;
-            expr->b = true;
-        } else if(SExprStringEqual(parser->src, &expr->s, "false")) {
-            expr->type = SE_BOOL;
-            expr->b = false;
+        if(SExprStringEqual(parser->src, &s, "true")) {
+            static SExpr strue = {SE_BOOL};
+            strue.b = true;
+
+            return &strue;
+        } else if(SExprStringEqual(parser->src, &s, "false")) {
+            static SExpr sfalse = {SE_BOOL};
+            sfalse.b = false;
+            
+            return &sfalse;
         }
+
+        SExpr* expr = SExprAlloc(parser, SE_ID);
+        expr->s = s;
 
         return expr;
     } else if(isdigit(parser->last) || (parser->last == '-' && isdigit(SExprPeek(parser)))) {
@@ -258,7 +263,9 @@ SEXPR_DEF SExpr* SExprParseValue(SExprParser* parser)
 
         if(parser->last == ')' || parser->last == ']' || parser->last == '}') {
             parser->last = SExprGetChar(parser);
-            return &SExprNil;
+            
+            static SExpr nil = {SE_NIL};
+            return &nil;
         }
 
         SExpr* list = SExprAlloc(parser, SE_LIST);
